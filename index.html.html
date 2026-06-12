@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>交通費精算書</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --blue: #185FA5; --blue-light: #E6F1FB; --blue-mid: #378ADD;
+    --green: #0F6E56; --green-light: #E1F5EE; --green-mid: #1D9E75;
+    --gray-bg: #F5F5F3; --gray-card: #FFFFFF;
+    --gray-border: #E0DED8; --gray-border2: #C8C6BF;
+    --text: #1A1A18; --text-sub: #5F5E5A; --text-hint: #9C9A94;
+    --danger: #C0392B; --danger-light: #FDECEA;
+    --success: #0F6E56; --success-light: #E1F5EE;
+    --radius: 10px; --radius-sm: 6px; --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  html { font-size: 15px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kline Gothic ProN', 'Noto Sans JP', sans-serif;
+    background: var(--gray-bg); color: var(--text);
+    min-height: 100vh; padding-bottom: 40px;
+  }
+  .topbar {
+    background: var(--blue); color: #fff; padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.02em; }
+  .topbar .month-pill { font-size: 12px; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; }
+  .container { max-width: 520px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--gray-card); border-radius: var(--radius); border: 1px solid var(--gray-border); padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: var(--text-hint); text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .section-label svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 12px; color: var(--text-sub); font-weight: 500; }
+  .field input, .field select {
+    font-size: 15px; padding: 9px 11px;
+    border: 1px solid var(--gray-border); border-radius: var(--radius-sm);
+    background: #fff; color: var(--text); width: 100%;
+    -webkit-appearance: none; appearance: none;
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(55,138,221,0.15); }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235F5E5A' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+
+  .tmpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .tmpl-chip { background: var(--gray-bg); border: 1px solid var(--gray-border); border-radius: var(--radius-sm); padding: 10px 10px 8px; cursor: pointer; position: relative; transition: border-color 0.15s, background 0.15s; text-align: left; min-height: 68px; }
+  .tmpl-chip:hover { border-color: var(--blue-mid); background: var(--blue-light); }
+  .tmpl-chip:active { transform: scale(0.97); }
+  .tmpl-chip .tc-label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; padding-right: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tmpl-chip .tc-route { font-size: 11px; color: var(--text-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+  .tmpl-chip .tc-amount { font-size: 13px; font-weight: 600; color: var(--blue); }
+  .tmpl-chip .tc-del { position: absolute; top: 5px; right: 5px; background: none; border: none; cursor: pointer; color: var(--text-hint); font-size: 16px; line-height: 1; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+  .tmpl-chip .tc-del:hover { background: var(--danger-light); color: var(--danger); }
+  .tmpl-chip.type-other:hover { border-color: var(--green-mid); background: var(--green-light); }
+  .tmpl-chip.type-other .tc-amount { color: var(--green); }
+  .toggle-btn { width: 100%; padding: 9px 14px; background: none; border: 1px dashed var(--gray-border2); border-radius: var(--radius-sm); color: var(--text-sub); font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.15s; }
+  .toggle-btn:hover { background: var(--gray-bg); border-style: solid; }
+  .tmpl-form { display: none; margin-top: 12px; padding: 14px; background: var(--gray-bg); border-radius: var(--radius-sm); }
+  .tmpl-form.open { display: block; }
+  .tmpl-form .grid2 { margin-bottom: 10px; }
+  .save-btn { width: 100%; padding: 10px; font-size: 14px; font-weight: 600; background: var(--success-light); color: var(--success); border: 1px solid var(--green-mid); border-radius: var(--radius-sm); cursor: pointer; margin-top: 4px; }
+  .save-btn:hover { background: var(--green-light); }
+
+  .entry-card { background: var(--gray-card); border-radius: var(--radius); border: 1px solid var(--gray-border); padding: 14px 14px 14px 18px; margin-bottom: 10px; position: relative; box-shadow: var(--shadow); }
+  .entry-card.transit { border-left: 3px solid var(--blue-mid); }
+  .entry-card.other { border-left: 3px solid var(--green-mid); }
+  .entry-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .entry-badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.04em; }
+  .transit .entry-badge { background: var(--blue-light); color: var(--blue); }
+  .other .entry-badge { background: var(--green-light); color: var(--green); }
+  .entry-del { background: none; border: none; cursor: pointer; color: var(--text-hint); font-size: 20px; line-height: 1; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: -4px -4px 0 0; }
+  .entry-del:hover { background: var(--danger-light); color: var(--danger); }
+  .entry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .entry-grid.full > * { grid-column: 1 / -1; }
+  .add-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .add-type-btn { padding: 12px 10px; font-size: 13px; font-weight: 500; border: 1px dashed var(--gray-border2); border-radius: var(--radius); background: none; color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.15s; }
+  .add-type-btn:hover { border-style: solid; }
+  .add-type-btn.transit:hover { background: var(--blue-light); border-color: var(--blue-mid); color: var(--blue); }
+  .add-type-btn.other:hover { background: var(--green-light); border-color: var(--green-mid); color: var(--green); }
+
+  .summary { padding: 14px; }
+  .sum-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 14px; border-bottom: 1px solid var(--gray-border); }
+  .sum-row:last-child { border-bottom: none; }
+  .sum-row .label { color: var(--text-sub); }
+  .sum-row.total { padding-top: 12px; }
+  .sum-row.total .label { font-size: 15px; font-weight: 600; color: var(--text); }
+  .sum-row.total .value { font-size: 20px; font-weight: 700; color: var(--blue); }
+
+  .print-btn {
+    width: 100%; padding: 16px; font-size: 16px; font-weight: 700;
+    background: var(--blue); color: #fff; border: none; border-radius: var(--radius);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    gap: 10px; letter-spacing: 0.02em; box-shadow: 0 2px 8px rgba(24,95,165,0.3);
+  }
+  .print-btn:hover { background: #0C447C; }
+  .print-btn:active { transform: scale(0.98); }
+  .hint { font-size: 12px; color: var(--text-hint); text-align: center; margin-top: 8px; }
+
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1A1A18; color: #fff; padding: 10px 20px; border-radius: 24px; font-size: 13px; font-weight: 500; opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 999; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+
+  @media (min-width: 480px) {
+    .container { padding: 20px; }
+    .topbar { padding: 16px 20px; }
+    .topbar h1 { font-size: 17px; }
+  }
+
+  /* ===== 印刷用スタイル ===== */
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff; padding: 0; font-family: 'Hiragino Sans', 'Hiragino Kline Gothic ProN', 'Noto Sans JP', sans-serif; }
+    .topbar, .container { display: none; }
+    .toast { display: none; }
+    .print-sheet { display: block !important; }
+  }
+  .print-sheet { display: none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>📋 交通費精算書</h1>
+  <span class="month-pill" id="month-display">－</span>
+</div>
+
+<div class="container">
+
+  <div class="card">
+    <div class="section-label">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M5 5.5h4M5 10.5h3"/></svg>
+      基本情報
+    </div>
+    <div class="grid2">
+      <div class="field"><label>申請月</label><input type="month" id="app-month"></div>
+      <div class="field"><label>申請日</label><input type="date" id="app-date"></div>
+      <div class="field" style="grid-column:1/-1;"><label>氏名</label><input type="text" id="name" placeholder="例：山田　勉"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h5"/><path d="M13 9l1.5 1.5L13 12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      よく使うテンプレート
+    </div>
+    <div class="tmpl-grid" id="tmpl-grid"></div>
+    <button class="toggle-btn" id="toggle-tmpl-btn">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>
+      テンプレートを追加
+    </button>
+    <div class="tmpl-form" id="tmpl-form">
+      <div class="grid2" style="margin-bottom:10px;">
+        <div class="field"><label>テンプレート名 *</label><input type="text" id="tn-label" placeholder="通勤（往復）"></div>
+        <div class="field"><label>種類</label><select id="tn-type"><option value="transit">交通費</option><option value="other">その他</option></select></div>
+      </div>
+      <div id="tn-transit-area">
+        <div class="grid2" style="margin-bottom:10px;">
+          <div class="field"><label>行き先</label><input type="text" id="tn-dest" placeholder="会社"></div>
+          <div class="field"><label>利用機関</label><input type="text" id="tn-line" placeholder="東急東横線"></div>
+        </div>
+        <div class="grid2" style="margin-bottom:10px;">
+          <div class="field"><label>出発地</label><input type="text" id="tn-from" placeholder="宮崎台駅"></div>
+          <div class="field"><label>到着地</label><input type="text" id="tn-to" placeholder="綱島駅"></div>
+        </div>
+      </div>
+      <div class="grid2" style="margin-bottom:0;">
+        <div class="field"><label>金額（円）*</label><input type="number" id="tn-amount" placeholder="522" inputmode="numeric"></div>
+        <div class="field"><label>備考</label><input type="text" id="tn-note" placeholder="往復"></div>
+      </div>
+      <button class="save-btn" id="save-tmpl-btn">テンプレートを保存</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10M3 6l3 3-3 3M8 12h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      明細入力
+    </div>
+    <div id="entries-container"></div>
+    <div class="add-row">
+      <button class="add-type-btn transit" id="add-transit">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="13" rx="2"/><path d="M4 11h16"/><circle cx="8" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/><path d="M8 16v1.5M16 16v1.5"/></svg>
+        交通費を追加
+      </button>
+      <button class="add-type-btn other" id="add-other">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h1l3-8h10l3 8h1"/><path d="M3 12v5a1 1 0 001 1h1a1 1 0 001-1v-1h12v1a1 1 0 001 1h1a1 1 0 001-1v-5H3z"/><circle cx="7.5" cy="14.5" r="1"/><circle cx="16.5" cy="14.5" r="1"/></svg>
+        その他を追加
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10M3 6l3 3-3 3M8 12h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      合計
+    </div>
+    <div class="summary">
+      <div class="sum-row"><span class="label">交通費小計</span><span class="value" id="transit-sum">¥0</span></div>
+      <div class="sum-row"><span class="label">その他費用小計</span><span class="value" id="other-sum">¥0</span></div>
+      <div class="sum-row total"><span class="label">合　計</span><span class="value" id="grand-total">¥0</span></div>
+    </div>
+  </div>
+
+  <button class="print-btn" id="print-btn">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6,9 6,2 18,2 18,9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    印刷する
+  </button>
+  <p class="hint">入力データは自動保存されます。ページを閉じても残ります。</p>
+  <button onclick="clearEntries()" style="width:100%;margin-top:10px;padding:11px;font-size:13px;background:none;border:1px solid #E0DED8;border-radius:10px;color:#9C9A94;cursor:pointer;">
+    今月の明細をリセット
+  </button>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 印刷用シート（画面非表示・印刷時のみ表示） -->
+<div class="print-sheet" id="print-sheet"></div>
+
+<style>
+  /* 印刷シートのスタイル */
+  .print-sheet {
+    padding: 20px 24px;
+    font-family: 'Hiragino Sans', 'Hiragino Kline Gothic ProN', 'Noto Sans JP', sans-serif;
+    font-size: 10pt;
+    color: #000;
+  }
+  .ps-title {
+    font-size: 16pt; font-weight: bold; text-align: center;
+    margin-bottom: 12px; letter-spacing: 0.1em;
+  }
+  .ps-meta {
+    width: 100%; border-collapse: collapse; margin-bottom: 12px;
+  }
+  .ps-meta td {
+    border: 1px solid #000; padding: 4px 8px;
+    font-size: 10pt; height: 24px;
+  }
+  .ps-meta .lbl { font-weight: bold; text-align: center; width: 52px; background: #f0f0f0; }
+  .ps-meta .val-date { width: 120px; }
+  .ps-meta .val-name { }
+  .ps-meta .seal { text-align: center; width: 44px; }
+  .ps-table {
+    width: 100%; border-collapse: collapse; margin-bottom: 10px;
+  }
+  .ps-table th {
+    border: 1px solid #000; padding: 4px 4px;
+    font-size: 9pt; font-weight: bold; text-align: center;
+    background: #f0f0f0; height: 22px;
+  }
+  .ps-table td {
+    border: 1px solid #000; padding: 3px 5px;
+    font-size: 9pt; height: 20px; vertical-align: middle;
+  }
+  .ps-table td.center { text-align: center; }
+  .ps-table td.right { text-align: right; }
+  .ps-table tr.section-sep td { background: #f8f8f8; height: 8px; padding: 0; }
+  .ps-total-row td { font-weight: bold; background: #f0f0f0; }
+  .ps-total-row td.right { font-size: 11pt; }
+  .col-date { width: 7%; }
+  .col-dest { width: 12%; }
+  .col-line { width: 24%; }
+  .col-from { width: 10%; }
+  .col-to   { width: 10%; }
+  .col-amt  { width: 8%; }
+  .col-note { width: 29%; }
+</style>
+
+<script>
+const $ = id => document.getElementById(id);
+const today = new Date();
+const todayStr = today.toISOString().split('T')[0];
+const monthStr = today.toISOString().slice(0, 7);
+
+$('app-date').value = todayStr;
+$('app-month').value = monthStr;
+updateMonthBadge();
+
+function updateMonthBadge() {
+  const v = $('app-month').value;
+  if (v) { const [y, m] = v.split('-'); $('month-display').textContent = y + '年' + parseInt(m) + '月分'; }
+}
+$('app-month').addEventListener('change', () => { updateMonthBadge(); saveState(); });
+$('app-date').addEventListener('change', saveState);
+$('name').addEventListener('input', saveState);
+
+function showToast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function fmtDate(str) {
+  if (!str) return '';
+  const [, m, d] = str.split('-');
+  return parseInt(m) + '月' + parseInt(d) + '日';
+}
+function fmtMoney(v) {
+  const n = parseFloat(v) || 0;
+  return '¥' + Math.round(n).toLocaleString('ja-JP');
+}
+
+const DEFAULT_TMPLS = [
+  { id:1, label:'通勤（往復）', type:'transit', destination:'会社', line:'東急田園都市線・東横線', from:'宮崎台駅', to:'綱島駅', amount:576, note:'往復' },
+  { id:2, label:'通勤（片道）', type:'transit', destination:'会社', line:'東急田園都市線・東横線', from:'宮崎台駅', to:'綱島駅', amount:288, note:'片道' },
+  { id:3, label:'帰宅（片道）', type:'transit', destination:'自宅', line:'東急東横線・田園都市線', from:'綱島駅', to:'宮崎台駅', amount:288, note:'片道' },
+  { id:4, label:'駐車場代', type:'other', destination:'', line:'', from:'', to:'', amount:300, note:'コインパーキング代' },
+  { id:5, label:'ガソリン代', type:'other', destination:'', line:'', from:'', to:'', amount:3000, note:'ガソリン代' }
+];
+
+let templates = [];
+let entries = [];
+let entryCounter = 0;
+let tmplCounter = 0;
+
+try {
+  const saved = localStorage.getItem('ktsv_templates');
+  templates = saved ? JSON.parse(saved) : DEFAULT_TMPLS;
+  tmplCounter = Math.max(0, ...templates.map(t => t.id));
+} catch(e) { templates = DEFAULT_TMPLS; }
+
+function saveTemplates() {
+  try { localStorage.setItem('ktsv_templates', JSON.stringify(templates)); } catch(e) {}
+}
+
+function saveState() {
+  try {
+    localStorage.setItem('ktsv_state', JSON.stringify({
+      name: $('name').value,
+      appMonth: $('app-month').value,
+      appDate: $('app-date').value,
+      entries, entryCounter
+    }));
+  } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('ktsv_state');
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (state.name) $('name').value = state.name;
+    if (state.appMonth) { $('app-month').value = state.appMonth; updateMonthBadge(); }
+    if (state.appDate) $('app-date').value = state.appDate;
+    if (state.entries && state.entries.length > 0) {
+      entries = state.entries;
+      entryCounter = state.entryCounter || entries.length;
+      entries.forEach(e => renderEntry(e));
+      updateSummary();
+    }
+  } catch(e) {}
+}
+
+function clearEntries() {
+  if (!confirm('今月の明細をすべてリセットしますか?\n(テンプレートは残ります)')) return;
+  entries = [];
+  entryCounter = 0;
+  $('entries-container').innerHTML = '';
+  updateSummary();
+  saveState();
+  showToast('明細をリセットしました');
+}
+
+function renderTemplates() {
+  const grid = $('tmpl-grid');
+  grid.innerHTML = '';
+  if (templates.length === 0) {
+    grid.innerHTML = '<p style="font-size:13px;color:#9C9A94;grid-column:1/-1;text-align:center;padding:8px 0;">テンプレートがありません</p>';
+    return;
+  }
+  templates.forEach(t => {
+    const chip = document.createElement('button');
+    chip.className = 'tmpl-chip type-' + t.type;
+    const route = t.type === 'transit'
+      ? (t.from && t.to ? t.from + ' → ' + t.to : t.destination || '')
+      : (t.note || 'その他費用');
+    const price = t.amount ? '¥' + parseInt(t.amount).toLocaleString('ja-JP') : '';
+    chip.innerHTML = `<span class="tc-del" data-id="${t.id}" role="button" aria-label="削除">×</span>
+      <div class="tc-label">${t.label}</div>
+      <div class="tc-route">${route}</div>
+      <div class="tc-amount">${price}</div>`;
+    chip.addEventListener('click', e => {
+      if (e.target.closest('.tc-del')) {
+        e.stopPropagation();
+        templates = templates.filter(x => x.id !== t.id);
+        saveTemplates(); renderTemplates();
+        showToast('テンプレートを削除しました');
+        return;
+      }
+      addEntryFromTemplate(t);
+    });
+    grid.appendChild(chip);
+  });
+}
+
+function addEntryFromTemplate(t) {
+  const id = ++entryCounter;
+  const dateVal = $('app-date').value || todayStr;
+  const entry = { id, type: t.type, date: dateVal, destination: t.destination || '', line: t.line || '', from: t.from || '', to: t.to || '', amount: t.amount || '', note: t.note || '' };
+  entries.push(entry);
+  renderEntry(entry);
+  updateSummary();
+  saveState();
+  showToast('「' + t.label + '」を追加しました');
+  setTimeout(() => {
+    const el = document.getElementById('entry-' + id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 60);
+}
+
+$('toggle-tmpl-btn').addEventListener('click', () => {
+  const form = $('tmpl-form');
+  const open = form.classList.toggle('open');
+  $('toggle-tmpl-btn').innerHTML = open
+    ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 7h10"/></svg> 閉じる'
+    : '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg> テンプレートを追加';
+});
+
+$('tn-type').addEventListener('change', function() {
+  $('tn-transit-area').style.display = this.value === 'transit' ? '' : 'none';
+});
+
+$('save-tmpl-btn').addEventListener('click', () => {
+  const label = $('tn-label').value.trim();
+  const amount = $('tn-amount').value;
+  if (!label) { $('tn-label').focus(); showToast('テンプレート名を入力してください'); return; }
+  if (!amount) { $('tn-amount').focus(); showToast('金額を入力してください'); return; }
+  const type = $('tn-type').value;
+  templates.push({ id: ++tmplCounter, label, type, destination: $('tn-dest').value.trim(), line: $('tn-line').value.trim(), from: $('tn-from').value.trim(), to: $('tn-to').value.trim(), amount: parseFloat(amount) || 0, note: $('tn-note').value.trim() });
+  saveTemplates(); renderTemplates();
+  ['tn-label','tn-dest','tn-line','tn-from','tn-to','tn-amount','tn-note'].forEach(id => { $(id).value = ''; });
+  $('tmpl-form').classList.remove('open');
+  $('toggle-tmpl-btn').innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg> テンプレートを追加';
+  showToast('テンプレートを保存しました');
+});
+
+function addEntry(type) {
+  const id = ++entryCounter;
+  const dateVal = $('app-date').value || todayStr;
+  const entry = { id, type, date: dateVal, destination: '', line: '', from: '', to: '', amount: '', note: '' };
+  entries.push(entry);
+  renderEntry(entry);
+  updateSummary();
+  saveState();
+  setTimeout(() => {
+    const el = document.getElementById('entry-' + id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 60);
+}
+
+function renderEntry(entry) {
+  const div = document.createElement('div');
+  div.className = 'entry-card ' + entry.type;
+  div.id = 'entry-' + entry.id;
+  const label = entry.type === 'transit' ? '交通費' : 'その他';
+  if (entry.type === 'transit') {
+    div.innerHTML = `
+      <div class="entry-top"><span class="entry-badge">${label}</span><button class="entry-del" onclick="removeEntry(${entry.id})" aria-label="削除">×</button></div>
+      <div class="entry-grid">
+        <div class="field"><label>日付</label><input type="date" data-id="${entry.id}" data-field="date" value="${entry.date}"></div>
+        <div class="field"><label>行き先</label><input type="text" data-id="${entry.id}" data-field="destination" placeholder="会社" value="${entry.destination}"></div>
+      </div>
+      <div class="entry-grid">
+        <div class="field"><label>出発地</label><input type="text" data-id="${entry.id}" data-field="from" placeholder="宮崎台駅" value="${entry.from}"></div>
+        <div class="field"><label>到着地</label><input type="text" data-id="${entry.id}" data-field="to" placeholder="綱島駅" value="${entry.to}"></div>
+      </div>
+      <div class="entry-grid">
+        <div class="field"><label>利用機関</label><input type="text" data-id="${entry.id}" data-field="line" placeholder="東急東横線" value="${entry.line}"></div>
+        <div class="field"><label>金額（円）</label><input type="number" data-id="${entry.id}" data-field="amount" placeholder="522" value="${entry.amount}" inputmode="numeric"></div>
+      </div>
+      <div class="entry-grid full">
+        <div class="field"><label>備考</label><input type="text" data-id="${entry.id}" data-field="note" placeholder="往復、商談同行など" value="${entry.note}"></div>
+      </div>`;
+  } else {
+    div.innerHTML = `
+      <div class="entry-top"><span class="entry-badge">${label}</span><button class="entry-del" onclick="removeEntry(${entry.id})" aria-label="削除">×</button></div>
+      <div class="entry-grid">
+        <div class="field"><label>日付</label><input type="date" data-id="${entry.id}" data-field="date" value="${entry.date}"></div>
+        <div class="field"><label>行き先・内容</label><input type="text" data-id="${entry.id}" data-field="destination" placeholder="AJ現調" value="${entry.destination}"></div>
+      </div>
+      <div class="entry-grid">
+        <div class="field"><label>金額（円）</label><input type="number" data-id="${entry.id}" data-field="amount" placeholder="3000" value="${entry.amount}" inputmode="numeric"></div>
+        <div class="field"><label>備考</label><input type="text" data-id="${entry.id}" data-field="note" placeholder="ガソリン代など" value="${entry.note}"></div>
+      </div>`;
+  }
+  div.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const id = parseInt(e.target.dataset.id);
+      const field = e.target.dataset.field;
+      const ent = entries.find(x => x.id === id);
+      if (ent) { ent[field] = e.target.value; updateSummary(); saveState(); }
+    });
+  });
+  $('entries-container').appendChild(div);
+}
+
+function removeEntry(id) {
+  entries = entries.filter(e => e.id !== id);
+  const el = document.getElementById('entry-' + id);
+  if (el) el.remove();
+  updateSummary();
+  saveState();
+  showToast('明細を削除しました');
+}
+
+function updateSummary() {
+  let transit = 0, other = 0;
+  entries.forEach(e => {
+    const v = parseFloat(e.amount) || 0;
+    if (e.type === 'transit') transit += v; else other += v;
+  });
+  const fmt = n => '¥' + Math.round(n).toLocaleString('ja-JP');
+  $('transit-sum').textContent = fmt(transit);
+  $('other-sum').textContent = fmt(other);
+  $('grand-total').textContent = fmt(transit + other);
+}
+
+$('add-transit').addEventListener('click', () => addEntry('transit'));
+$('add-other').addEventListener('click', () => addEntry('other'));
+
+function buildPrintSheet() {
+  const name = $('name').value || '　';
+  const appDate = fmtDate($('app-date').value);
+  const monthVal = $('app-month').value;
+  const [y, m] = monthVal ? monthVal.split('-') : ['', ''];
+  const monthLabel = y && m ? y + '年' + parseInt(m) + '月分' : '';
+
+  const transitEntries = entries.filter(e => e.type === 'transit');
+  const otherEntries = entries.filter(e => e.type === 'other');
+  let total = 0;
+  entries.forEach(e => { total += parseFloat(e.amount) || 0; });
+
+  let rows = '';
+
+  transitEntries.forEach(e => {
+    rows += `<tr>
+      <td class="center col-date">${fmtDate(e.date)}</td>
+      <td class="center col-dest">${e.destination}</td>
+      <td class="center col-line">${e.line}</td>
+      <td class="center col-from">${e.from}</td>
+      <td class="center col-to">${e.to}</td>
+      <td class="right col-amt">${fmtMoney(e.amount)}</td>
+      <td class="col-note">${e.note}</td>
+    </tr>`;
+  });
+
+  if (transitEntries.length > 0 && otherEntries.length > 0) {
+    rows += `<tr class="section-sep"><td colspan="7"></td></tr>`;
+  }
+
+  otherEntries.forEach(e => {
+    rows += `<tr>
+      <td class="center col-date">${fmtDate(e.date)}</td>
+      <td class="center col-dest">${e.destination}</td>
+      <td colspan="3" style="border:1px solid #000;"></td>
+      <td class="right col-amt">${fmtMoney(e.amount)}</td>
+      <td class="col-note">${e.note}</td>
+    </tr>`;
+  });
+
+  rows += `<tr class="ps-total-row">
+    <td colspan="5" style="border:1px solid #000;"></td>
+    <td colspan="1" style="border:1px solid #000; text-align:center; font-weight:bold;">合　　計</td>
+    <td class="right" style="border:1px solid #000; font-size:11pt; font-weight:bold;">${fmtMoney(total)}</td>
+  </tr>`;
+
+  return `
+    <div class="ps-title">交通費精算書　${monthLabel}</div>
+    <table class="ps-meta">
+      <tr>
+        <td class="lbl">申請日</td>
+        <td class="val-date">${appDate}</td>
+        <td style="border:none; width:20px;"></td>
+        <td class="lbl">氏名</td>
+        <td class="val-name">${name}</td>
+        <td class="seal">印</td>
+      </tr>
+    </table>
+    <table class="ps-table">
+      <thead>
+        <tr>
+          <th class="col-date">日付</th>
+          <th class="col-dest">行き先</th>
+          <th class="col-line">利用機関</th>
+          <th class="col-from">出発地</th>
+          <th class="col-to">到着地</th>
+          <th class="col-amt">金額</th>
+          <th class="col-note">備考</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+$('print-btn').addEventListener('click', () => {
+  if (entries.length === 0) { showToast('明細を入力してください'); return; }
+  const sheet = $('print-sheet');
+  sheet.innerHTML = buildPrintSheet();
+  window.print();
+});
+
+renderTemplates();
+loadState();
+</script>
+</body>
+</html>
