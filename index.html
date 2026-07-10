@@ -16,7 +16,8 @@
     --success: #0F6E56; --success-light: #E1F5EE;
     --radius: 10px; --radius-sm: 6px; --shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
-  html { font-size: 15px; }
+  html { font-size: 15px; -webkit-tap-highlight-color: transparent; }
+  button, .tmpl-chip { touch-action: manipulation; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kline Gothic ProN', 'Noto Sans JP', sans-serif;
     background: var(--gray-bg); color: var(--text);
@@ -111,6 +112,7 @@
   }
 
   /* ===== 印刷用スタイル ===== */
+  @page { size: A4 portrait; margin: 10mm; }
   @media print {
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { background: #fff; padding: 0; font-family: 'Hiragino Sans', 'Hiragino Kline Gothic ProN', 'Noto Sans JP', sans-serif; }
@@ -273,12 +275,12 @@
   .ps-total-row td { font-weight: bold; background: #f0f0f0; }
   .ps-total-row td.right { font-size: 11pt; }
   .col-date { width: 13%; }
-  .col-dest { width: 12%; }
-  .col-line { width: 20%; }
-  .col-from { width: 10%; }
-  .col-to   { width: 10%; }
+  .col-dest { width: 11%; }
+  .col-line { width: 18%; }
+  .col-from { width: 12%; }
+  .col-to   { width: 12%; }
   .col-amt  { width: 10%; }
-  .col-note { width: 25%; }
+  .col-note { width: 24%; }
 </style>
 
 <script>
@@ -293,8 +295,19 @@ updateMonthBadge();
 
 function updateMonthBadge() {
   const v = $('app-month').value;
-  if (v) { const [y, m] = v.split('-'); $('month-display').textContent = y + '年' + parseInt(m) + '月分'; }
+  if (v && v.includes('-')) {
+    const [y, m] = v.split('-');
+    $('month-display').textContent = y + '年' + parseInt(m) + '月分';
+  }
 }
+
+// type=month非対応ブラウザ(一部Android標準ブラウザ)ではテキスト入力にフォールバック
+(function() {
+  const mi = $('app-month');
+  if (mi.type !== 'month') {
+    mi.placeholder = '2026-07 の形式で入力';
+  }
+})();
 $('app-month').addEventListener('change', () => { updateMonthBadge(); saveState(); });
 $('app-date').addEventListener('change', saveState);
 $('name').addEventListener('input', saveState);
@@ -648,21 +661,29 @@ function buildPrintSheet() {
 }
 
 function fitTexts() {
-  // 文字が枠を超える場合、横方向に自動縮小(Excelの「縮小して全体を表示」相当)
+  // 文字が枠を超える場合、フォントサイズを自動縮小(Excelの「縮小して全体を表示」相当)
+  // iOS Safariの印刷でも確実に反映されるようfont-size方式を採用
   const sheet = $('print-sheet');
   sheet.style.display = 'block';
   sheet.style.position = 'absolute';
   sheet.style.left = '-9999px';
   sheet.style.width = '190mm';
   sheet.querySelectorAll('td .fit').forEach(span => {
-    span.style.transform = '';
+    span.style.fontSize = '';
     const cell = span.parentElement;
     const cs = window.getComputedStyle(cell);
     const avail = cell.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const w = span.scrollWidth;
+    let w = span.scrollWidth;
     if (w > avail && avail > 0) {
-      const ratio = Math.max(0.45, avail / w);
-      span.style.transform = 'scaleX(' + ratio + ')';
+      // 収まるまでフォントサイズを段階的に縮小（最小5pt）
+      let size = 9;
+      while (w > avail && size > 5) {
+        size -= 0.5;
+        span.style.fontSize = size + 'pt';
+        w = span.scrollWidth;
+      }
+      // 安全マージンとしてさらに0.5pt下げる
+      if (size > 5.5) span.style.fontSize = (size - 0.5) + 'pt';
     }
   });
   sheet.style.display = '';
@@ -676,7 +697,17 @@ $('print-btn').addEventListener('click', () => {
   const sheet = $('print-sheet');
   sheet.innerHTML = buildPrintSheet();
   fitTexts();
-  setTimeout(() => window.print(), 50);
+  if (typeof window.print !== 'function') {
+    showToast('このブラウザは印刷非対応です。Chromeで開いてください');
+    return;
+  }
+  setTimeout(() => {
+    try {
+      window.print();
+    } catch (err) {
+      showToast('印刷できません。Chromeなど別のブラウザでお試しください');
+    }
+  }, 50);
 });
 
 renderTemplates();
