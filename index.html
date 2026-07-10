@@ -16,7 +16,7 @@
     --success: #0F6E56; --success-light: #E1F5EE;
     --radius: 10px; --radius-sm: 6px; --shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
-  html { font-size: 15px; -webkit-tap-highlight-color: transparent; }
+  html { font-size: 15px; -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   button, .tmpl-chip { touch-action: manipulation; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kline Gothic ProN', 'Noto Sans JP', sans-serif;
@@ -114,7 +114,7 @@
   /* ===== 印刷用スタイル ===== */
   @page { size: A4 portrait; margin: 10mm; }
   @media print {
-    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; -webkit-text-size-adjust: 100% !important; text-size-adjust: 100% !important; }
     body { background: #fff; padding: 0; font-family: 'Hiragino Sans', 'Hiragino Kline Gothic ProN', 'Noto Sans JP', sans-serif; }
     .topbar, .container { display: none; }
     .toast { display: none; }
@@ -229,6 +229,8 @@
 <style>
   /* 印刷シートのスタイル */
   .print-sheet {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     padding: 20px 24px;
     font-family: 'Hiragino Sans', 'Hiragino Kline Gothic ProN', 'Noto Sans JP', sans-serif;
     font-size: 10pt;
@@ -267,6 +269,7 @@
   }
   .ps-table td.center { text-align: center; }
   .ps-table td.col-date, .ps-table th.col-date { padding-left: 1px; padding-right: 1px; letter-spacing: 0; }
+  .ps-table td.col-from, .ps-table td.col-to { padding-left: 1px; padding-right: 1px; letter-spacing: 0; }
   .ps-table td .fit { display: inline-block; white-space: nowrap; transform-origin: left center; }
   .ps-table td.center .fit { transform-origin: center center; }
   .ps-table td.right .fit { transform-origin: right center; }
@@ -274,11 +277,11 @@
   .ps-table tr.section-sep td { background: #f8f8f8; height: 8px; padding: 0; }
   .ps-total-row td { font-weight: bold; background: #f0f0f0; }
   .ps-total-row td.right { font-size: 11pt; }
-  .col-date { width: 13%; }
+  .col-date { width: 12%; }
   .col-dest { width: 11%; }
-  .col-line { width: 18%; }
-  .col-from { width: 12%; }
-  .col-to   { width: 12%; }
+  .col-line { width: 17%; }
+  .col-from { width: 13%; }
+  .col-to   { width: 13%; }
   .col-amt  { width: 10%; }
   .col-note { width: 24%; }
 </style>
@@ -674,16 +677,15 @@ function fitTexts() {
     const cs = window.getComputedStyle(cell);
     const avail = cell.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     let w = span.scrollWidth;
-    if (w > avail && avail > 0) {
-      // 収まるまでフォントサイズを段階的に縮小（最小5pt）
+    // 印刷時はフォント幅が画面計測より広くなることがあるため、9割に収まるよう厳しめに判定
+    const target = avail * 0.9;
+    if (w > target && avail > 0) {
       let size = 9;
-      while (w > avail && size > 5) {
+      while (w > target && size > 5) {
         size -= 0.5;
         span.style.fontSize = size + 'pt';
         w = span.scrollWidth;
       }
-      // 安全マージンとしてさらに0.5pt下げる
-      if (size > 5.5) span.style.fontSize = (size - 0.5) + 'pt';
     }
   });
   sheet.style.display = '';
