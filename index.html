@@ -72,6 +72,8 @@
   .transit .entry-badge { background: var(--blue-light); color: var(--blue); }
   .other .entry-badge { background: var(--green-light); color: var(--green); }
   .entry-del { background: none; border: none; cursor: pointer; color: var(--text-hint); font-size: 20px; line-height: 1; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: -4px -4px 0 0; }
+  .entry-move { background: none; border: 1px solid var(--gray-border); cursor: pointer; color: var(--text-sub); font-size: 11px; line-height: 1; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+  .entry-move:hover { background: var(--blue-light); color: var(--blue); border-color: var(--blue-mid); }
   .entry-del:hover { background: var(--danger-light); color: var(--danger); }
   .entry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
   .entry-grid.full > * { grid-column: 1 / -1; }
@@ -179,6 +181,9 @@
       明細入力
     </div>
     <div id="entries-container"></div>
+    <button onclick="sortByDate()" style="width:100%;margin-bottom:8px;padding:9px;font-size:13px;background:none;border:1px solid var(--gray-border);border-radius:10px;color:var(--text-sub);cursor:pointer;">
+      ⇅ 日付順に並べ替え
+    </button>
     <div class="add-row">
       <button class="add-type-btn transit" id="add-transit">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="13" rx="2"/><path d="M4 11h16"/><circle cx="8" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/><path d="M8 16v1.5M16 16v1.5"/></svg>
@@ -260,6 +265,9 @@
   }
   .ps-table td.center { text-align: center; }
   .ps-table td.col-date, .ps-table th.col-date { padding-left: 1px; padding-right: 1px; letter-spacing: 0; }
+  .ps-table td .fit { display: inline-block; white-space: nowrap; transform-origin: left center; }
+  .ps-table td.center .fit { transform-origin: center center; }
+  .ps-table td.right .fit { transform-origin: right center; }
   .ps-table td.right { text-align: right; }
   .ps-table tr.section-sep td { background: #f8f8f8; height: 8px; padding: 0; }
   .ps-total-row td { font-weight: bold; background: #f0f0f0; }
@@ -461,7 +469,14 @@ function renderEntry(entry) {
   const label = entry.type === 'transit' ? '交通費' : 'その他';
   if (entry.type === 'transit') {
     div.innerHTML = `
-      <div class="entry-top"><span class="entry-badge">${label}</span><button class="entry-del" onclick="removeEntry(${entry.id})" aria-label="削除">×</button></div>
+      <div class="entry-top">
+        <span class="entry-badge">${label}</span>
+        <span style="display:flex;align-items:center;gap:2px;">
+          <button class="entry-move" onclick="moveEntry(${entry.id}, -1)" aria-label="上へ移動">▲</button>
+          <button class="entry-move" onclick="moveEntry(${entry.id}, 1)" aria-label="下へ移動">▼</button>
+          <button class="entry-del" onclick="removeEntry(${entry.id})" aria-label="削除">×</button>
+        </span>
+      </div>
       <div class="entry-grid">
         <div class="field"><label>日付</label><input type="date" data-id="${entry.id}" data-field="date" value="${entry.date}"></div>
         <div class="field"><label>行き先</label><input type="text" data-id="${entry.id}" data-field="destination" placeholder="会社" value="${entry.destination}"></div>
@@ -479,7 +494,14 @@ function renderEntry(entry) {
       </div>`;
   } else {
     div.innerHTML = `
-      <div class="entry-top"><span class="entry-badge">${label}</span><button class="entry-del" onclick="removeEntry(${entry.id})" aria-label="削除">×</button></div>
+      <div class="entry-top">
+        <span class="entry-badge">${label}</span>
+        <span style="display:flex;align-items:center;gap:2px;">
+          <button class="entry-move" onclick="moveEntry(${entry.id}, -1)" aria-label="上へ移動">▲</button>
+          <button class="entry-move" onclick="moveEntry(${entry.id}, 1)" aria-label="下へ移動">▼</button>
+          <button class="entry-del" onclick="removeEntry(${entry.id})" aria-label="削除">×</button>
+        </span>
+      </div>
       <div class="entry-grid">
         <div class="field"><label>日付</label><input type="date" data-id="${entry.id}" data-field="date" value="${entry.date}"></div>
         <div class="field"><label>行き先・内容</label><input type="text" data-id="${entry.id}" data-field="destination" placeholder="AJ現調" value="${entry.destination}"></div>
@@ -507,6 +529,33 @@ function removeEntry(id) {
   updateSummary();
   saveState();
   showToast('明細を削除しました');
+}
+
+function renderAllEntries() {
+  $('entries-container').innerHTML = '';
+  entries.forEach(e => renderEntry(e));
+}
+
+function moveEntry(id, dir) {
+  const idx = entries.findIndex(e => e.id === id);
+  if (idx < 0) return;
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= entries.length) return;
+  [entries[idx], entries[newIdx]] = [entries[newIdx], entries[idx]];
+  renderAllEntries();
+  updateSummary();
+  saveState();
+  const el = document.getElementById('entry-' + id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function sortByDate() {
+  if (entries.length < 2) return;
+  entries.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  renderAllEntries();
+  updateSummary();
+  saveState();
+  showToast('日付順に並べ替えました');
 }
 
 function updateSummary() {
@@ -540,13 +589,13 @@ function buildPrintSheet() {
 
   transitEntries.forEach(e => {
     rows += `<tr>
-      <td class="center col-date">${fmtDate(e.date)}</td>
-      <td class="center col-dest">${e.destination}</td>
-      <td class="center col-line">${e.line}</td>
-      <td class="center col-from">${e.from}</td>
-      <td class="center col-to">${e.to}</td>
-      <td class="right col-amt">${fmtMoney(e.amount)}</td>
-      <td class="col-note">${e.note}</td>
+      <td class="center col-date"><span class="fit">${fmtDate(e.date)}</span></td>
+      <td class="center col-dest"><span class="fit">${e.destination}</span></td>
+      <td class="center col-line"><span class="fit">${e.line}</span></td>
+      <td class="center col-from"><span class="fit">${e.from}</span></td>
+      <td class="center col-to"><span class="fit">${e.to}</span></td>
+      <td class="right col-amt"><span class="fit">${fmtMoney(e.amount)}</span></td>
+      <td class="col-note"><span class="fit">${e.note}</span></td>
     </tr>`;
   });
 
@@ -556,11 +605,11 @@ function buildPrintSheet() {
 
   otherEntries.forEach(e => {
     rows += `<tr>
-      <td class="center col-date">${fmtDate(e.date)}</td>
-      <td class="center col-dest">${e.destination}</td>
+      <td class="center col-date"><span class="fit">${fmtDate(e.date)}</span></td>
+      <td class="center col-dest"><span class="fit">${e.destination}</span></td>
       <td colspan="3" style="border:1px solid #000;"></td>
-      <td class="right col-amt">${fmtMoney(e.amount)}</td>
-      <td class="col-note">${e.note}</td>
+      <td class="right col-amt"><span class="fit">${fmtMoney(e.amount)}</span></td>
+      <td class="col-note"><span class="fit">${e.note}</span></td>
     </tr>`;
   });
 
@@ -598,11 +647,36 @@ function buildPrintSheet() {
     </table>`;
 }
 
+function fitTexts() {
+  // 文字が枠を超える場合、横方向に自動縮小(Excelの「縮小して全体を表示」相当)
+  const sheet = $('print-sheet');
+  sheet.style.display = 'block';
+  sheet.style.position = 'absolute';
+  sheet.style.left = '-9999px';
+  sheet.style.width = '190mm';
+  sheet.querySelectorAll('td .fit').forEach(span => {
+    span.style.transform = '';
+    const cell = span.parentElement;
+    const cs = window.getComputedStyle(cell);
+    const avail = cell.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const w = span.scrollWidth;
+    if (w > avail && avail > 0) {
+      const ratio = Math.max(0.45, avail / w);
+      span.style.transform = 'scaleX(' + ratio + ')';
+    }
+  });
+  sheet.style.display = '';
+  sheet.style.position = '';
+  sheet.style.left = '';
+  sheet.style.width = '';
+}
+
 $('print-btn').addEventListener('click', () => {
   if (entries.length === 0) { showToast('明細を入力してください'); return; }
   const sheet = $('print-sheet');
   sheet.innerHTML = buildPrintSheet();
-  window.print();
+  fitTexts();
+  setTimeout(() => window.print(), 50);
 });
 
 renderTemplates();
