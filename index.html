@@ -78,6 +78,25 @@
   .entry-del:hover { background: var(--danger-light); color: var(--danger); }
   .entry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
   .entry-grid.full > * { grid-column: 1 / -1; }
+  .scan-btn {
+    width: 100%; padding: 13px; font-size: 14px; font-weight: 600;
+    background: linear-gradient(135deg, var(--blue-mid), var(--blue)); color: #fff;
+    border: none; border-radius: 10px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .scan-btn:active { opacity: 0.85; transform: scale(0.99); }
+  .ocr-overlay {
+    position: fixed; inset: 0; background: rgba(26,26,24,0.75);
+    display: none; align-items: center; justify-content: center;
+    z-index: 2000; flex-direction: column; gap: 14px; color: #fff; text-align: center; padding: 24px;
+  }
+  .ocr-spinner {
+    width: 36px; height: 36px; border: 4px solid rgba(255,255,255,0.25);
+    border-top-color: #fff; border-radius: 50%;
+    animation: ocr-spin 0.8s linear infinite;
+  }
+  @keyframes ocr-spin { to { transform: rotate(360deg); } }
   .add-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
   .add-type-btn { padding: 12px 10px; font-size: 13px; font-weight: 500; border: 1px dashed var(--gray-border2); border-radius: var(--radius); background: none; color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.15s; }
   .add-type-btn:hover { border-style: solid; }
@@ -182,6 +201,12 @@
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10M3 6l3 3-3 3M8 12h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       明細入力
     </div>
+    <input type="file" id="receipt-input" accept="image/*" capture="environment" style="display:none;">
+    <button class="scan-btn" id="scan-receipt-btn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      レシートを撮影して追加
+    </button>
+    <p style="font-size:11px;color:var(--text-hint);text-align:center;margin:-6px 0 12px;">試験機能・読み取り後は内容をご確認ください（初回は少し時間がかかります）</p>
     <div id="entries-container"></div>
     <button onclick="sortByDate()" style="width:100%;margin-bottom:8px;padding:9px;font-size:13px;background:none;border:1px solid var(--gray-border);border-radius:10px;color:var(--text-sub);cursor:pointer;">
       ⇅ 日付順に並べ替え
@@ -286,6 +311,11 @@
   .col-note { width: 24%; }
 </style>
 
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<div class="ocr-overlay" id="ocr-overlay">
+  <div class="ocr-spinner"></div>
+  <div id="ocr-overlay-text" style="font-size:14px;">準備中...</div>
+</div>
 <script>
 const $ = id => document.getElementById(id);
 const today = new Date();
@@ -422,6 +452,150 @@ function renderTemplates() {
     grid.appendChild(chip);
   });
 }
+
+// ===== レシート読み取り(OCR) =====
+let ocrWorker = null;
+
+function showOcrOverlay(msg) {
+  $('ocr-overlay').style.display = 'flex';
+  $('ocr-overlay-text').textContent = msg;
+}
+function updateOcrOverlay(msg) { $('ocr-overlay-text').textContent = msg; }
+function hideOcrOverlay() { $('ocr-overlay').style.display = 'none'; }
+
+function ocrStatusLabel(status) {
+  const map = {
+    'loading tesseract core': 'エンジンを準備中...',
+    'initializing tesseract': '初期化中...',
+    'loading language traineddata': '言語データを読み込み中...(初回のみ)',
+    'initializing api': '準備中...',
+    'recognizing text': '文字を読み取り中...'
+  };
+  return map[status] || '処理中...';
+}
+
+async function getOcrWorker() {
+  if (ocrWorker) return ocrWorker;
+  showOcrOverlay('準備中...');
+  ocrWorker = await Tesseract.createWorker('jpn', 1, {
+    logger: m => {
+      if (m.status === 'recognizing text') {
+        updateOcrOverlay('読み取り中... ' + Math.round((m.progress || 0) * 100) + '%');
+      } else if (m.status) {
+        updateOcrOverlay(ocrStatusLabel(m.status));
+      }
+    }
+  });
+  return ocrWorker;
+}
+
+function normalizeDigits(str) {
+  return str.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+}
+
+function parseReceiptText(text) {
+  const normalized = normalizeDigits(text || '');
+  const lines = normalized.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const result = { date: '', amount: '', destination: '', note: '' };
+
+  // 店名らしき最初の行を推測（数字・記号だけの行は除外）
+  for (const line of lines.slice(0, 6)) {
+    if (line.length >= 2 && !/^[\d\s\-\/:：¥,、.。]+$/.test(line)) {
+      result.destination = line.slice(0, 18);
+      break;
+    }
+  }
+
+  // 日付抽出（年あり優先、なければ今年を補完）
+  let m = normalized.match(/(\d{4})[年\/\-.](\d{1,2})[月\/\-.](\d{1,2})/);
+  if (m) {
+    const mm = String(parseInt(m[2])).padStart(2, '0');
+    const dd = String(parseInt(m[3])).padStart(2, '0');
+    result.date = `${m[1]}-${mm}-${dd}`;
+  } else {
+    m = normalized.match(/(\d{1,2})[月\/\-](\d{1,2})日?/);
+    if (m) {
+      const y = ($('app-date').value || todayStr).slice(0, 4);
+      const mm = String(parseInt(m[1])).padStart(2, '0');
+      const dd = String(parseInt(m[2])).padStart(2, '0');
+      result.date = `${y}-${mm}-${dd}`;
+    }
+  }
+
+  // 金額抽出：「合計」等の近くの数字を優先
+  let bestAmount = null;
+  const totalKeywords = /(合計|お会計|総計|ご利用金額|total)/i;
+  for (const line of lines) {
+    if (totalKeywords.test(line)) {
+      const nums = line.match(/[\d,]{2,}/g);
+      if (nums) {
+        const n = parseInt(nums[nums.length - 1].replace(/,/g, ''));
+        if (!isNaN(n) && n > 0 && n < 1000000) { bestAmount = n; break; }
+      }
+    }
+  }
+  if (!bestAmount) {
+    const moneyMatches = [...normalized.matchAll(/[¥￥]\s?([\d,]{2,})|([\d,]{3,})\s?円/g)];
+    let max = 0;
+    moneyMatches.forEach(mm => {
+      const raw = mm[1] || mm[2];
+      const n = parseInt((raw || '').replace(/,/g, ''));
+      if (!isNaN(n) && n > max && n < 1000000) max = n;
+    });
+    if (max > 0) bestAmount = max;
+  }
+  if (bestAmount) result.amount = bestAmount;
+
+  result.note = '(要確認)';
+  return result;
+}
+
+$('scan-receipt-btn').addEventListener('click', () => {
+  $('receipt-input').click();
+});
+
+$('receipt-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  try {
+    showOcrOverlay('準備中...');
+    const worker = await getOcrWorker();
+    updateOcrOverlay('文字を読み取り中...');
+    const { data } = await worker.recognize(file);
+    hideOcrOverlay();
+
+    const parsed = parseReceiptText(data.text);
+    const id = ++entryCounter;
+    const dateVal = parsed.date || $('app-date').value || todayStr;
+    const entry = {
+      id, type: 'other', date: dateVal,
+      destination: parsed.destination || '', line: '', from: '', to: '',
+      amount: parsed.amount || '', note: parsed.note
+    };
+    entries.push(entry);
+    renderEntry(entry);
+    updateSummary();
+    saveState();
+
+    const lowConfidence = (data.confidence || 0) < 60;
+    showToast(lowConfidence ? '読み取り精度が低めです。内容をよく確認してください' : '読み取りました。内容をご確認ください');
+
+    setTimeout(() => {
+      const el = document.getElementById('entry-' + id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.transition = 'box-shadow 0.3s';
+        el.style.boxShadow = '0 0 0 2px var(--blue-mid)';
+        setTimeout(() => { el.style.boxShadow = ''; }, 2500);
+      }
+    }, 100);
+  } catch (err) {
+    hideOcrOverlay();
+    showToast('読み取りに失敗しました。手入力をお試しください');
+  }
+});
 
 function addEntryFromTemplate(t) {
   const id = ++entryCounter;
